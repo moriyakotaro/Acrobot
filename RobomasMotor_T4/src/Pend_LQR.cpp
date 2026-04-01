@@ -1,12 +1,11 @@
 #include <Arduino.h>
 #include <Encoder.h>
-#include <SPI.h>
+#include <Metro.h>
+#include <MsTimer2.h>
+#include "CAN.h"
+#include "RobomasMotor.h"
 
-// Teensy 4.1 + MCP4922 settings
-constexpr uint8_t DAC_CS_PIN = 10;        // SPI CS pin for MCP4922
-constexpr float VREF = 5.34f;             // MCP4922 reference voltage
-
-// Encoder pins
+// External encoder pins
 constexpr uint8_t ENC_A = 17;
 constexpr uint8_t ENC_B = 27;
 constexpr uint8_t ENC_2A = 22;
@@ -14,61 +13,58 @@ constexpr uint8_t ENC_2B = 5;
 constexpr uint8_t ENC_MA = 6;
 constexpr uint8_t ENC_MB = 13;
 
-// Motor direction and debug pins
-constexpr uint8_t FR_DCM = 26;
-constexpr uint8_t CHECK_PIN = 4;
+constexpr double MOTOR_CONTROL_CYCLE_MS = 3.0;  // RobomasMotor control interrupt period
+constexpr float DT_SEC = 0.008f;                // LQR update period
+constexpr float TWO_PI_F = 2.0f * PI;
 
-// Encoder instances (4x decoding in Encoder library)
+// M2006 settings (same CAN control style as main.cpp)
+constexpr uint8_t M2006_ID = 5;
+constexpr int16_t MAX_TARGET_RPM = 3000;
+
 Encoder enc1(ENC_A, ENC_B);
 Encoder enc2(ENC_2A, ENC_2B);
 Encoder encm(ENC_MA, ENC_MB);
 
-// LQR state
-float rang1 = 0.0f, rang2 = 0.0f, rangm = 0.0f;
-float prang1 = 0.0f, prang2 = 0.0f, prangm = 0.0f;
+CanControl DriveCan1(1);
+RobomasMotor motor1(&DriveCan1, MOTOR_CONTROL_CYCLE_MS);
+PIDGain RpmM2006 = {2.0f, 1.0f, 0.0f};
+
+Metro lqrTiming(8);
+
+float rang1 = 0.0f, rangm = 0.0f;
+float prang1 = 0.0f, prangm = 0.0f;
 float pprang1 = 0.0f, pprangm = 0.0f;
 float drang1 = 0.0f, drang2 = 0.0f, drangm = 0.0f;
-
-float gains[6]{};
+float gains[4]{};
 float iTQ = 0.0f;
 float Vtg = 0.0f;
 bool conts = true;
 int flag = 0;
 
-constexpr float TWO_PI_F = 2.0f * PI;
-constexpr float DT_SEC = 0.008f;  // control period (8 ms)
+void compute() {
+  motor1.Control();
+}
 
-void writeDac(uint8_t channel, float voltage) {
-  if (voltage < 0.0f) voltage = 0.0f;
-  if (voltage > VREF) voltage = VREF;
-
-  const uint16_t data = static_cast<uint16_t>((voltage / VREF) * 4095.0f);
-  const uint16_t command = (channel == 0) ? 0x3000 : 0xB000;
-  const uint16_t value = command | (data & 0x0FFF);
-
-  digitalWrite(DAC_CS_PIN, LOW);
-  SPI.transfer16(value);
-  digitalWrite(DAC_CS_PIN, HIGH);
+int16_t voltageToTargetRpm(float voltage) {
+  // voltage command -> target RPM for M2006 speed control
+  float rpm = (voltage / 24.0f) * static_cast<float>(MAX_TARGET_RPM);
+  if (rpm > MAX_TARGET_RPM) rpm = MAX_TARGET_RPM;
+  if (rpm < -MAX_TARGET_RPM) rpm = -MAX_TARGET_RPM;
+  return static_cast<int16_t>(rpm);
 }
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 3000) {
-    // wait for serial monitor on USB, timeout for standalone execution
-  }
+  delay(500);
 
-  pinMode(FR_DCM, OUTPUT);
-  pinMode(CHECK_PIN, OUTPUT);
-  digitalWrite(FR_DCM, LOW);
-  digitalWrite(CHECK_PIN, LOW);
+  motor1.init();
+  delay(100);
 
-  pinMode(DAC_CS_PIN, OUTPUT);
-  digitalWrite(DAC_CS_PIN, HIGH);
+  MsTimer2::set(MOTOR_CONTROL_CYCLE_MS, compute);
+  MsTimer2::start();
 
-  SPI.begin();
-  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  motor1.setRpmPIDgain(M2006, M2006_ID, &RpmM2006);
 
-  // LQR gains
   gains[0] = -0.1546f;
   gains[1] = -7.982f;
   gains[2] = -0.4626f;
@@ -78,16 +74,17 @@ void setup() {
   enc2.write(0);
   encm.write(0);
 
-  Serial.println("Teensy 4.1 LQR control start");
+  Serial.println("Pendulum LQR -> M2006 RPM control start");
 }
 
 void loop() {
+  if (!lqrTiming.check()) return;
+
   if (!conts) {
-    writeDac(0, 0.0f);
+    motor1.setTargetRpmM2006(M2006_ID, 0);
     return;
   }
 
-  // Encoder library returns quadrature count; keep scale from original source
   const float angle = -(static_cast<float>(enc1.read()) / 4096.0f) * TWO_PI_F;
   const float angle2 = -(static_cast<float>(enc2.read()) / 4096.0f) * TWO_PI_F;
   const float anglem = -(static_cast<float>(encm.read()) / 4096.0f) * TWO_PI_F / 28.0f;
@@ -101,6 +98,7 @@ void loop() {
   rangm = anglem;
 
   drang1 = (rang1 - pprang1) / DT_SEC;
+  drang2 = (angle2 - prang1) / DT_SEC;
   drangm = (rangm - pprangm) / DT_SEC;
 
   iTQ = -(gains[0] * rangm + gains[1] * rang1 + gains[2] * drangm + gains[3] * drang1);
@@ -108,27 +106,17 @@ void loop() {
 
   if (flag == 1) {
     Vtg = 0.0f;
-  }
-
-  digitalWrite(FR_DCM, (Vtg > 0.0f) ? HIGH : LOW);
-
-  // Keep original forced test voltage behavior
-  Vtg = 0.9f;
-
-  if (flag == 1) {
-    Vtg = 0.0f;
     conts = false;
   }
 
-  writeDac(0, fabsf(Vtg));
+  const int16_t targetRpm = voltageToTargetRpm(Vtg);
+  motor1.setTargetRpmM2006(M2006_ID, targetRpm);
 
   if (fabsf(anglem) > (TWO_PI_F * 0.5f)) {
     flag = 1;
   }
 
   Serial.printf(
-      "Enc1: %10.5f rad  Enc2: %10.5f rad  Mot: %10.5f rad  dth1: %10.5f rad/s  dth2: %10.5f rad/s  dth0: %10.5f rad/s  Vol: %6.3f V  Torq: %8.5f Nm\r",
-      angle, angle2, anglem, drang1, drang2, drangm, Vtg, iTQ);
-
-  delay(8);
+      "Enc1:%9.5f Enc2:%9.5f Mot:%9.5f dth1:%9.5f dthm:%9.5f V:%7.3f RPM:%6d Torq:%8.5f\r",
+      angle, angle2, anglem, drang1, drangm, Vtg, targetRpm, iTQ);
 }
