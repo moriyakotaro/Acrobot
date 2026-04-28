@@ -18,9 +18,9 @@ class Bno055GyroSensor{
 		double getOrientationX();
 		double getOrientationY();
 		double getOrientationZ();
-		double getOrientationX_error();
-		double getOrientationY_error();
-		double getOrientationZ_error();
+		double getOrientationdifferenceX();
+		double getOrientationdifferenceY();
+		double getOrientationdifferenceZ();
 		sensors_vec_t getAngVelocity();
 		double getAngVelocityX();
 		double getAngVelocityY();
@@ -59,13 +59,20 @@ class Bno055GyroSensor{
 
 		int8_t boardTemp;			//センサーから取得した温度データを入れる変数
 
-		double offset_orientation_x;	//オイラー角のX軸のオフセット値
-		double offset_orientation_y;	//オイラー角のY軸のオフセット値
-		double offset_orientation_z;	//オイラー角のZ軸のオフセット値
+		bool pos_flag;
+
+		double orientationdifference_x;
+		double orientationdifference_y;
+		double orientationdifference_z;
+		double preorientationData_x;
+		double preorientationData_y;
+		double preorientationData_z;
 
 		void membaInit();			//変数初期化関数
 
 		void printEvent(sensors_event_t* event);
+
+		void orientationdifference();
 };
 
 #endif
