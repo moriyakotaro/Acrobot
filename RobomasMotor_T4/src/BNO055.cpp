@@ -5,12 +5,8 @@ Bno055GyroSensor::Bno055GyroSensor(Adafruit_BNO055* bno) : bno(bno) {
 }
 
 void Bno055GyroSensor::membaInit(){
-  updateGyroData();
-	offset_orientation_x = orientationData.orientation.x;
-	offset_orientation_y = orientationData.orientation.y;
-	offset_orientation_z = orientationData.orientation.z;
+  pos_flag=true;
 }
-
 void Bno055GyroSensor::init(){
   if (!bno->begin())
   {
@@ -27,16 +23,52 @@ void Bno055GyroSensor::updateGyroData(){
   bno->getEvent(&magnetometerData, Adafruit_BNO055::VECTOR_MAGNETOMETER);
   bno->getEvent(&accelerometerData, Adafruit_BNO055::VECTOR_ACCELEROMETER);
   bno->getEvent(&gravityData, Adafruit_BNO055::VECTOR_GRAVITY);
-	boardTemp = bno->getTemp();
+  boardTemp = bno->getTemp();
+  orientationdifference();
   return;
 }
 
+void Bno055GyroSensor::orientationdifference(){
+	if(pos_flag != true){
+		double diff_x, diff_y, diff_z;
+        diff_x = orientationData.orientation.x - preorientationData_x;
+        diff_y = orientationData.orientation.y - preorientationData_y;
+        diff_z = orientationData.orientation.z - preorientationData_z;
+        if (diff_x < -(180)){
+          diff_x += 360;
+        }else if ((180) < diff_x){
+          diff_x -= 360;
+        }
+        if (diff_y < -(180)){
+          diff_y += 360;
+        }else if ((180) < diff_y){
+          diff_y -= 360;
+        }
+        if (diff_z < -(180)){
+          diff_z += 360;
+        }else if ((180) < diff_z){
+          diff_z -= 360;
+        }
+        orientationdifference_x += diff_x;
+        orientationdifference_y += diff_y;
+        orientationdifference_z += diff_z;
+	}else{
+		orientationdifference_x = 0;
+		orientationdifference_y = 0;
+		orientationdifference_z = 0;
+		pos_flag = false;
+	}
+	preorientationData_x = orientationData.orientation.x;
+	preorientationData_y = orientationData.orientation.y;
+	preorientationData_z = orientationData.orientation.z;
+}
+
 void Bno055GyroSensor::dispGyroData(){
-  Serial.print(offset_orientation_x);
+  Serial.print(orientationdifference_x);
   Serial.print("\t");
-  Serial.print(offset_orientation_y);
+  Serial.print(orientationdifference_y);
   Serial.print("\t");
-  Serial.println(offset_orientation_z);
+  Serial.println(orientationdifference_z);
 
   printEvent(&orientationData);
   printEvent(&angVelocityData);
@@ -132,14 +164,14 @@ double Bno055GyroSensor::getOrientationY(){
 double Bno055GyroSensor::getOrientationZ(){
 	return orientationData.orientation.z;
 }
-double Bno055GyroSensor::getOrientationX_error(){
-	return orientationData.orientation.x - offset_orientation_x;
+double Bno055GyroSensor::getOrientationdifferenceX(){
+	return orientationdifference_x;
 }
-double Bno055GyroSensor::getOrientationY_error(){
-	return orientationData.orientation.y - offset_orientation_y;
+double Bno055GyroSensor::getOrientationdifferenceY(){
+  return orientationdifference_y;
 }
-double Bno055GyroSensor::getOrientationZ_error(){
-	return orientationData.orientation.z - offset_orientation_z;
+double Bno055GyroSensor::getOrientationdifferenceZ(){
+  return orientationdifference_z;
 }
 
 sensors_vec_t Bno055GyroSensor::getAngVelocity(){
