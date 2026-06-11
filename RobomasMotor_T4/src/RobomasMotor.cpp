@@ -194,8 +194,6 @@ void RobomasMotor::updateMotorDataM2006(uint8_t id){
 	DataM2006[id].ampare = (dataf[4]<<8) + dataf[5];
 	DataM2006[id].temperature = dataf[6];
 	phasedifferenceM2006(id);
-	LQRDataM2006[id].mot_ang = getPhaseM2006(id);
-  	LQRDataM2006[id].mot_rpm = getRpmM2006(id);
 	return;
 }
 
@@ -376,13 +374,15 @@ void RobomasMotor::calculate(){
 				if(is_useLQRControlM2006[i]){
 					if(!check_is_contact(0x200+i)) continue;
             		updateMotorDataM2006(i);
-            		double tPI = 4.0*acos(0.0);
-            		LQRDataM2006[i].mot_difang = LQRDataM2006[i].mot_rpm/60*tPI;
-				    LQRDataM2006[i].mot_absang = LQRDataM2006[i].mot_ang + LQRDataM2006[i].Senser->senser1;
-            		LQRDataM2006[i].gyro_absang = LQRDataM2006[i].Senser->senser1;
-            		LQRDataM2006[i].iTQ = -(LQRDataM2006[i].Gain->gains[0]*LQRDataM2006[i].gyro_absang + LQRDataM2006[i].Gain->gains[1]*LQRDataM2006[i].mot_absang + LQRDataM2006[i].Gain->gains[2]*LQRDataM2006[i].Senser->senser2 + LQRDataM2006[i].Gain->gains[3]*LQRDataM2006[i].mot_difang);
-            		if(this->LQRDataM2006[i].iTQ >= MAXANPARE_M2006) this->LQRDataM2006[i].iTQ = MAXANPARE_M2006;
+            		LQRDataM2006[i].mot_difang = (-1)*DataM2006[i].rpm/60.0*tPI*GEARRATE;	//角速度(rad/s)
+				    LQRDataM2006[i].mot_absang = (-1)*PCDataM2006[i].phase*tPI/RESOLUTION*GEARRATE + LQRDataM2006[i].Senser->senser1/360.0*tPI;	//绝对角度(rad)
+            		LQRDataM2006[i].gyro_absang = LQRDataM2006[i].Senser->senser1/360.0*tPI;
+					LQRDataM2006[i].gyro_difang = LQRDataM2006[i].Senser->senser2;		//ジャイロの角速度(rad/s)
+            		LQRDataM2006[i].iTQ = -10*100*(LQRDataM2006[i].Gain->gains[0]*LQRDataM2006[i].gyro_absang + LQRDataM2006[i].Gain->gains[1]*LQRDataM2006[i].mot_absang + LQRDataM2006[i].Gain->gains[2]*LQRDataM2006[i].gyro_difang + LQRDataM2006[i].Gain->gains[3]*LQRDataM2006[i].mot_difang);
+					if(this->LQRDataM2006[i].iTQ >= MAXANPARE_M2006) this->LQRDataM2006[i].iTQ = MAXANPARE_M2006;
 					if(this->LQRDataM2006[i].iTQ <= -MAXANPARE_M2006) this->LQRDataM2006[i].iTQ = -MAXANPARE_M2006;
+					if(LQRDataM2006[i].Senser->senser1 < -60) this->LQRDataM2006[i].iTQ = 0;
+					if(LQRDataM2006[i].Senser->senser1 > 60) this->LQRDataM2006[i].iTQ = 0;
             		DataM2006[i].order_ampare = LQRDataM2006[i].iTQ;
           		}
 				break;
@@ -498,7 +498,7 @@ void RobomasMotor::dispMotorDataM2006(uint8_t id){
 	Serial.print("\tampare:");
 	Serial.print(DataM2006[id].ampare);
 	Serial.print("\ttemperature:");
-	Serial.print(DataM2006[id].temperature);
+	Serial.println(DataM2006[id].temperature);
 	Serial.print("\torder_ampare:");
 	Serial.print(DataM2006[id].order_ampare);
 	Serial.print("\tkp:");
@@ -619,6 +619,16 @@ void RobomasMotor::dispUsingMotorGM6020(){
         Serial.print(is_useGM6020[i]);
         Serial.print(" ");
     }
+	Serial.println();
+}
+
+void RobomasMotor::dispUsingLQRMotorM2006(){
+	Serial.print("using MotorM2006\t");
+	Serial.print(LQRDataM2006[1].iTQ, 10);
+	Serial.print("\tphase:");
+	Serial.print(PCDataM2006[1].phase*360.0/RESOLUTION*GEARRATE);
+	Serial.print(" \tangle:");
+	Serial.print(DataM2006[1].angle);
 	Serial.println();
 }
 

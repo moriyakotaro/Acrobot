@@ -36,7 +36,8 @@ const double CAN_BITRATE = 1e6;			//ロボマスモーター（ESC）の初期�
 #define MAXANPARE_M2006 10000			//M2006の最大出力電流
 
 #define RESOLUTION 8192					//ロボマスモーター内部のエンコーダの１回転あたりの分解能
-
+#define GEARRATE (1.0/36)
+#define tPI (4.0 * acos(0.0))
 
 typedef struct{
 	float kp;
@@ -84,11 +85,10 @@ typedef struct{
 }MotorPositionControlData;	//M3508,M2006,GM6020の角度制御(位置制御)に必要なモータ個々のデータをまとめている構造体
 
 typedef struct{
-	int16_t mot_ang;		//モータ内部にあるエンコーダの機械的角度
-	int16_t mot_rpm;		//モータの回転速度
-	int mot_difang;       	//モータの角速度
-  	int64_t mot_absang;
-  	int64_t gyro_absang;
+	double mot_difang;       	//モータの角速度
+  	double mot_absang;		//モータの絶対角度
+	double gyro_difang;		//ジャイロの角速度
+  	double gyro_absang;	//ジャイロの絶対角度
   	double iTQ;				//モータに流したいトルク電流
 	LQRGain *Gain;			//回転数制御を行う上で使用するLQRゲイン
   	SenserData *Senser;		//センサーデータのポインタ
@@ -147,6 +147,8 @@ class RobomasMotor : public CanControl{
 		void dispUsingMotorM3508();				//M3508の使用されているモータを表示する
 		void dispUsingMotorM2006();				//M2006の使用されているモータを表示する
 		void dispUsingMotorGM6020();			//GM6020の使用されているモータを表示する
+
+		void dispUsingLQRMotorM2006();	//M2006のLQR制御を使用しているモータを表示する
 //////////////////////////////////////////////////////////////////////////////////////////
 
 	private:

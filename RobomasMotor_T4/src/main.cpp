@@ -7,7 +7,7 @@
 #include <Wire.h>
 #include "BNO055.h"
 
-const double motor_control_cycle = 10.0;/*ms*/
+const double motor_control_cycle = 3.0;//10.0;/*ms*/
 
 PIDGain RpmM3508 = {5., 3., 0.};
 PIDGain PosM3508 = {3., 1., 0.};
@@ -16,7 +16,6 @@ PIDGain PosM2006 = {3., 1., 0.};
 PIDGain RpmGM6020 = {5., 0., 0.};
 PIDGain PosGM6020 = {40., 3., 0.};
 LQRGain LQRM2006 = {-7.871, -6.221, -1.157, -1.195};
-// LQRGain LQRM2006 = {0., 0., 0., 0.};
 SenserData Gyro = {0., 0.};
 
 CanControl DriveCan1(1);  //CanContorlクラスの定義　引数に使用するCANbusの番号を入力する
@@ -29,8 +28,8 @@ Metro DispTiming(50);
 
 void compute(){
   gyro1.updateGyroData();   //ジャイロデータを取得する
-  Gyro.senser1 = gyro1.getOrientationdifferenceX();
-  Gyro.senser2 =gyro1.getAngVelocityX();
+  Gyro.senser1 = gyro1.getOrientationY();
+  Gyro.senser2 =gyro1.getAngVelocityY();
   for(int i=1; i<=4; i++){
     motor1.setSenserDataM2006(i, &Gyro);
   }
@@ -53,7 +52,7 @@ void setup() {
 void loop() {
   if(DispTiming.check()){
     gyro1.dispGyroData();
-    // motor1.dispUsingLQRMotorM2006();
+    motor1.dispUsingLQRMotorM2006();
   }
 
 }

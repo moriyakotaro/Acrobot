@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "WebSerial",
+			"path": "../../WebSerial"
+		}
+	],
+	"settings": {}
+}
